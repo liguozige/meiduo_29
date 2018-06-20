@@ -89,6 +89,7 @@ DATABASES = {
     }
 }
 
+
 #redis
 CACHES = {
     "default": {
