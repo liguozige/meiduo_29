@@ -17,6 +17,8 @@ class ImageCodeView(APIView): #因为不需要使用序列化器，所以使用A
 
         #生成图片验证码图片
         text,image = captcha.generate_captcha()
+        print(text)
+        print(image)
 
         #保存真实值
         redis_conn = get_redis_connection('verify_codes')
