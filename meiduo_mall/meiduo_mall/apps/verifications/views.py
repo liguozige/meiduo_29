@@ -10,7 +10,7 @@ from meiduo_mall.libs.captcha.captcha import captcha
 from django_redis import get_redis_connection  #通过get_redis_connection可以拿到一个连接对象，通过这个对象可以执行redis指令
 import logging
 
-
+from users.models import User
 from verifications.serializer import ImageCodeCheckSerializer
 from . import constants
 from meiduo_mall.utils.yuntongxun.sms import CCP
@@ -22,6 +22,26 @@ from celery_tasks.sms.tasks import send_sms_code
 # Create your views here.
 
 logger = logging.getLogger('django')
+
+
+# url(r'^usernames/(?P<username>\w{5,20})/count/$', views.UsernameCountView.as_view()),
+class UsernameCountView(APIView):
+    """
+    用户名数量
+    """
+    def get(self, request, username):
+        """
+        获取指定用户名数量
+        """
+        count = User.objects.filter(username=username).count()
+
+        data = {
+            'username': username,
+            'count': count
+        }
+
+        return Response(data)
+
 
 
 class ImageCodeView(APIView): #因为不需要使用序列化器，所以使用APIView，因为只有这个和序列化器无关
