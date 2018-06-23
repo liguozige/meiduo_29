@@ -24,23 +24,7 @@ from celery_tasks.sms.tasks import send_sms_code
 logger = logging.getLogger('django')
 
 
-# url(r'^usernames/(?P<username>\w{5,20})/count/$', views.UsernameCountView.as_view()),
-class UsernameCountView(APIView):
-    """
-    用户名数量
-    """
-    def get(self, request, username):
-        """
-        获取指定用户名数量
-        """
-        count = User.objects.filter(username=username).count()
 
-        data = {
-            'username': username,
-            'count': count
-        }
-
-        return Response(data)
 
 
 
