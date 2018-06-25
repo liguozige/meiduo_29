@@ -1,7 +1,7 @@
 import urllib
 from urllib.request import urlopen
 import logging
-from itsdangerous import TimedJSONWebSignatureSerializer as TJWSSerializer
+from itsdangerous import TimedJSONWebSignatureSerializer as TJWSSerializer, BadData
 from rest_framework.utils import json
 from . import constants
 from .exceptions import OAuthQQAPIError
@@ -87,3 +87,12 @@ class OAuthQQ(object):
         token = serializer.dumps({'openid':openid}) #返回bytes类型
         return token.decode() #转成字符串类型
 
+    @staticmethod  #既没有使用类属性，又没有使用对象属性，所以定义为静态方法
+    def check_bind_user_access_token(access_token):
+        serializer = TJWSSerializer(settings.SECRET_KEY,constants.BIND_USER_ACCESS_TOKEN_EXPIRES)
+        try:
+            data = serializer.loads(access_token)
+        except BadData:
+            return None
+        else:
+            return data['openid']
