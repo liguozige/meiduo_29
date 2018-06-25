@@ -1,5 +1,6 @@
 from django.shortcuts import render
-from rest_framework.generics import CreateAPIView
+from rest_framework.generics import CreateAPIView, RetrieveAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,12 +26,6 @@ class UserView(CreateAPIView):
     #保存用户数据  密码加密
 
     #序列化 返回数据
-
-
-
-
-
-
 
 # url(r'^mobiles/(?P<mobile>1[3-9]\d{9})/count/$', views.MobileCountView.as_view()),
 class MobileCountView(APIView):
@@ -68,3 +63,23 @@ class UsernameCountView(APIView):
         }
 
         return Response(data)
+
+
+class UserDetailView(RetrieveAPIView):
+    """
+    用户详情
+    """
+    #RetrieveAPIView这个视图中的序列化器会帮我们完成
+    # def get(self):
+    #     #查询用户数据
+    #
+    #     #序列化返回
+    serializer_class = serializers.UserDetailSerializer
+    permission_classes = [IsAuthenticated] #指明必须登录认证后才能访问
+    # queryset = User.objects.all() #指明数据的来源，可以通过重写get_object()方法
+    def get_object(self):
+        #返回当前请求的用户
+        #在类视图对象中，可以通过类视图对象的属性获取request
+        #在django的请求request对象中，user属性表明当前请求的用户
+        return self.request.user
+
