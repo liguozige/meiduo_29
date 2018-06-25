@@ -37,34 +37,32 @@ class QQAuthUserView(APIView):
         code = request.query_params.get('code')
         if not code:
             return Response({'message':'缺少code'},status=status.HTTP_400_BAD_REQUEST)
-
         oauth_qq = OAuthQQ()
         try:
             # 凭借code获取access_token
             access_token = oauth_qq.get_access_token(code)
             # 凭借access_token 获取openid
-            openid = oauth_qq.get_open_id(access_token)
+            openid = oauth_qq.get_openid(access_token)
         except OAuthQQAPIError:
             return Response({'message':'访问QQ接口异常'},status=status.HTTP_503_SERVICE_UNAVAILABLE)
-
-        #根据openid查询数据库OAuthQQUser 判断数据是否存在
+        #根据openid查询数据库OAuthQQUser 判断用户是否存在
         try:
             oauth_qq_user = OAuthQQUser.objects.get(openid=openid)
         except OAuthQQUser.DoesNotExist:
-            # 如果数据不存在，处理openid 并返回
-            access_token = oauth_qq.generate_bind_user_access_token(openid)
+            # 如果用户不存在，使用itsdangerous处理隐藏openid 并返回
+            access_token = oauth_qq.generate_bind_user_access_token(openid) #自己生成的access_token
+            return Response({'access_token':access_token})
         else:
             #如果数据存在，表示用户已经绑定过身份，签发JWT token
             jwt_payload_handler = api_settings.JWT_PAYLOAD_HANDLER
             jwt_encode_handler = api_settings.JWT_ENCODE_HANDLER
-
             user = oauth_qq_user.user
             payload = jwt_payload_handler(user)
             token = jwt_encode_handler(payload)
             return ({
                 'username':user.username,
                 'user_id':user.id,
-                'token':user.token
+                'token':token
             })
 
 
