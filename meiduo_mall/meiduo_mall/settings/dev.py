@@ -247,6 +247,17 @@ QQ_STATE = '/index.html'
 QQ_CLIENT_SECRET = 'c6ce949e04e12ecc909ae6a8b09b637c'
 
 
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.163.com'
+EMAIL_PORT = 25
+#发送邮件的邮箱
+EMAIL_HOST_USER = 'guo532171909@163.com'
+#在邮箱中设置的客户端授权密码
+EMAIL_HOST_PASSWORD = 'guo123456'
+#收件人看到的发件人
+EMAIL_FROM = '美多商城<guo532171909@163.com>'
+
+
 
 
 

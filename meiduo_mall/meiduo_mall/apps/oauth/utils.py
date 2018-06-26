@@ -1,7 +1,7 @@
 import urllib
 from urllib.request import urlopen
 import logging
-from itsdangerous import TimedJSONWebSignatureSerializer as TJWSSerializer
+from itsdangerous import TimedJSONWebSignatureSerializer as TJWSSerializer, BadData
 from rest_framework.utils import json
 from . import constants
 from .exceptions import OAuthQQAPIError
@@ -39,22 +39,21 @@ class OAuthQQ(object):
 
     def get_access_token(self,code):
         url = 'https://graph.qq.com/oauth2.0/token?'
-
-        params = {
+        params = { #以下是必传参数
             'grant_type':'authorization_code',
             'client_id':self.client_id,
             'client_secret':self.client_secret,
             'code':code,
             'redirect_uri':self.redirect_uri
-        }
-        url += urllib.parse.urlencode(params)
+        }  #拼接url
+        url += urllib.parse.urlencode(params) #通过urllib.parse.urlencode()可以将字典转换成查询字符串中间&连接
         try:
             #发送请求
-            resp = urlopen(url)
+            resp = urlopen(url)  #向QQ浏览器发送请求
             #读取响应体数据
             resp_data = resp.read() #bytes
             resp_data = resp_data.decode() #str
-            #解析 access_token
+            #使用urllib.parse.parse_qs（）解析 access_token
             resp_dict = urllib.parse.parse_qs(resp_data)
         except Exception as e:
             logger.error('获取access_token失败%s'%e)
@@ -63,27 +62,37 @@ class OAuthQQ(object):
             access_token = resp_dict.get('access_token')
             return access_token[0]
 
-    def get_open_id(self,access_token):
+    def get_openid(self,access_token):
         url = 'https://graph.qq.com/oauth2.0/me?access_token='+access_token
-
         try:
             #发送请求
-            resp = urlopen(url)
+            resp = urlopen(url)  #向QQ浏览器发送请求
             #读取响应体数据
             resp_data = resp.read() #bytes
             resp_data = resp_data.decode() #str
-            #解析 callback( {"client_id":"YOUR_APPID","openid":"YOUR_OPENID"} );
-            resp_data = resp_data[10:-4]
-            resp_dict = json.loads(resp_data)
+            #解析 callback( {"client_id":"YOUR_APPID","openid":"YOUR_OPENID"} )\n;
+            resp_data = resp_data[10:-4]  #使用切片得到小括号中的json
+            resp_dict = json.loads(resp_data) #将json转换成字典
         except Exception as e:
             logger.error('获取openid失败%s'%e)
-            raise OAuthQQAPIError
+            raise OAuthQQAPIError  #自定义的异常
         else:
             openid = resp_dict.get('openid')
             return openid
 
+    #自定义生成access_token的方法 使用itsdangerous ，使用前先安装
     def generate_bind_user_access_token(self,openid):
+        # 先创建对象                  serializer = Serializer(秘钥, 有效期秒)
         serializer = TJWSSerializer(settings.SECRET_KEY,constants.BIND_USER_ACCESS_TOKEN_EXPIRES)
-        token = serializer.dumps({'openid':openid})
-        return token.decode()
+        token = serializer.dumps({'openid':openid}) #返回bytes类型
+        return token.decode() #转成字符串类型
 
+    @staticmethod  #既没有使用类属性，又没有使用对象属性，所以定义为静态方法
+    def check_bind_user_access_token(access_token):
+        serializer = TJWSSerializer(settings.SECRET_KEY,constants.BIND_USER_ACCESS_TOKEN_EXPIRES)
+        try:
+            data = serializer.loads(access_token)
+        except BadData:
+            return None
+        else:
+            return data['openid']

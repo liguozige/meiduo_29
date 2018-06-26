@@ -1,9 +1,11 @@
 from django.shortcuts import render
-from rest_framework.generics import CreateAPIView
+from rest_framework import status
+from rest_framework.generics import CreateAPIView, RetrieveAPIView, UpdateAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users import serializers
+from . import serializers
 from users.models import User
 
 
@@ -25,12 +27,6 @@ class UserView(CreateAPIView):
     #保存用户数据  密码加密
 
     #序列化 返回数据
-
-
-
-
-
-
 
 # url(r'^mobiles/(?P<mobile>1[3-9]\d{9})/count/$', views.MobileCountView.as_view()),
 class MobileCountView(APIView):
@@ -68,3 +64,63 @@ class UsernameCountView(APIView):
         }
 
         return Response(data)
+
+
+class UserDetailView(RetrieveAPIView):
+    """
+    用户详情
+    """
+    # RetrieveAPIView这个视图中的序列化器会帮我们完成
+    # def get(self):
+    #     #查询用户数据
+    #
+    #     #序列化返回
+    serializer_class = serializers.UserDetailSerializer
+    permission_classes = [IsAuthenticated]  # 指明必须登录认证后才能访问
+    # queryset = User.objects.all()  # 指明数据的来源，可以通过重写get_object()方法
+    def get_object(self):
+        # 返回当前请求的用户
+        # 在类视图对象中，可以通过类视图对象的属性获取request
+        # 在django的请求request对象中，user属性表明当前请求的用户
+        return self.request.user
+
+
+class EmailView(UpdateAPIView):
+    """
+    保存用户邮箱
+    """
+    serializer_class = serializers.EmailSerializer
+    permission_classes = [IsAuthenticated]
+    def get_object(self):
+        return self.request.user
+
+    # def put(self):
+    #     # 获取email
+    #     # 校验email
+    #     # 查询user
+    #     # 更新数据
+    #     # 序列化返回
+
+
+# url(r'^emails/verification/$', views.VerifyEmailView.as_view()),
+class VerifyEmailView(APIView):
+    """
+    邮箱验证
+    """
+    def get(self,request):
+        # 获取token
+        token = request.query_params.get('token')
+        if not token:
+            return Response({'message': '缺少token'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证token
+        user = User.check_verify_email_token(token)
+        if user is None:
+            return Response({'message': '链接信息无效'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            user.email_active = True
+            user.save()
+            return Response({'message': 'OK'})
+
+
+
