@@ -4,7 +4,7 @@ from rest_framework_jwt.settings import api_settings
 
 from .models import User
 import re
-
+from celery_tasks.email.tasks import send_active_email
 
 #用户注册的序列化器
 class CreateUserSerializer(serializers.ModelSerializer):
@@ -99,3 +99,21 @@ class EmailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('email','id')
+
+    def update(self, instance, validated_data):
+        """
+
+        :param instance: 视图传过来的user对象（视图在创建序列化器的时候会传过来）
+        :param validated_data:
+        :return:
+        """
+        #取出收件人的email
+        email = validated_data['email']
+        instance.email = email
+        instance.save()  # 保存邮箱到数据库
+        #生成激活链接
+        url = instance.generate_verify_email_url()
+        #调用celery里面的方法来发送邮件 email：收件人  url：验证的链接地址
+        send_active_email.delay(email,url)
+
+        return instance
