@@ -1,10 +1,15 @@
 from django.shortcuts import render
+from django_redis import get_redis_connection
+from rest_framework import mixins
 from rest_framework import status
-from rest_framework.generics import CreateAPIView, RetrieveAPIView, UpdateAPIView
+from rest_framework.generics import CreateAPIView, RetrieveAPIView, UpdateAPIView, GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from goods.models import SKU
+from users import constants
+from users.serializers import AddUserBrowsingHistorySerializer, SKUSerializer
 from . import serializers
 from users.models import User
 
@@ -122,5 +127,36 @@ class VerifyEmailView(APIView):
             user.save()
             return Response({'message': 'OK'})
 
+class UserBrowsingHistoryView(mixins.CreateModelMixin, GenericAPIView):
+    """
+    用户浏览历史记录
+    """
+    serializer_class = AddUserBrowsingHistorySerializer
+    permission_classes = [IsAuthenticated]
 
+    def post(self, request):
+        """
+        保存
+        """
+        return self.create(request)
+
+    def get(self, request):
+        """
+        获取
+        """
+        #获取user_id
+        user_id = request.user.id
+        #查询redis  list
+        redis_conn = get_redis_connection("history")
+        sku_id_list = redis_conn.lrange("history_%s" % user_id, 0, constants.USER_BROWSING_HISTORY_COUNTS_LIMIT - 1)
+
+        skus = []
+        # 为了保持查询出的顺序与用户的浏览历史保存顺序一致,使用for循环
+        for sku_id in sku_id_list:
+            sku = SKU.objects.get(id=sku_id)
+            skus.append(sku)
+
+        #序列化返回
+        serializer = SKUSerializer(skus, many=True)
+        return Response(serializer.data)
 
