@@ -1,23 +1,24 @@
 from django_redis import get_redis_connection
 from rest_framework import serializers
+import re
 from rest_framework_jwt.settings import api_settings
 
-from goods.models import SKU
-from users import constants
-from .models import User
-import re
+from .models import User, Address
 from celery_tasks.email.tasks import send_active_email
+from goods.models import SKU
+from . import constants
 
-#用户注册的序列化器
+
 class CreateUserSerializer(serializers.ModelSerializer):
+    """创建用户的序列化器"""
     password2 = serializers.CharField(label='确认密码', write_only=True)
     sms_code = serializers.CharField(label='短信验证码', write_only=True)
     allow = serializers.CharField(label='同意协议', write_only=True)
-    token = serializers.CharField(label='jwt token',read_only=True)
+    token = serializers.CharField(label='JWT token', read_only=True)
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'password', 'password2', 'sms_code', 'mobile', 'allow','token')
+        fields = ('id', 'username', 'password', 'password2', 'sms_code', 'mobile', 'allow', 'token')
         extra_kwargs = {
             'username': {
                 'min_length': 5,
@@ -82,49 +83,95 @@ class CreateUserSerializer(serializers.ModelSerializer):
         user.set_password(validated_data['password'])
         user.save()
 
-        #签发JWTtoken
+        # 签发jwt token
         jwt_payload_handler = api_settings.JWT_PAYLOAD_HANDLER
         jwt_encode_handler = api_settings.JWT_ENCODE_HANDLER
 
         payload = jwt_payload_handler(user)
         token = jwt_encode_handler(payload)
+
         user.token = token
 
         return user
 
+
 class UserDetailSerializer(serializers.ModelSerializer):
+    """
+    用户详细信息序列化器
+    """
     class Meta:
         model = User
-        fields = ('id','username','mobile','email','email_active')
+        fields = ('id', 'username', 'mobile', 'email', 'email_active')
+
 
 class EmailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('email','id')
+        fields = ('id', 'email')
 
     def update(self, instance, validated_data):
         """
 
-        :param instance: 视图传过来的user对象（视图在创建序列化器的时候会传过来）
+        :param instance:  视图传过来的user对象
         :param validated_data:
         :return:
         """
-        #取出收件人的email
+
         email = validated_data['email']
+
         instance.email = email
-        instance.save()  # 保存邮箱到数据库
-        #生成激活链接
+        instance.save()
+
+        # 生成激活链接
         url = instance.generate_verify_email_url()
-        #调用celery里面的方法来发送邮件 email：收件人  url：验证的链接地址
-        send_active_email.delay(email,url)
+
+        # 发送邮件
+        send_active_email.delay(email, url)
 
         return instance
 
 
+class UserAddressSerializer(serializers.ModelSerializer):
+    """
+    用户地址序列化器
+    """
+    province = serializers.StringRelatedField(read_only=True)
+    city = serializers.StringRelatedField(read_only=True)
+    district = serializers.StringRelatedField(read_only=True)
+    province_id = serializers.IntegerField(label='省ID', required=True)
+    city_id = serializers.IntegerField(label='市ID', required=True)
+    district_id = serializers.IntegerField(label='区ID', required=True)
+
+    class Meta:
+        model = Address
+        exclude = ('user', 'is_deleted', 'create_time', 'update_time')
+
+    def validate_mobile(self, value):
+        """
+        验证手机号
+        """
+        if not re.match(r'^1[3-9]\d{9}$', value):
+            raise serializers.ValidationError('手机号格式错误')
+        return value
+
+    def create(self, validated_data):
+        """
+        保存
+        """
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class AddressTitleSerializer(serializers.ModelSerializer):
+    """
+    地址标题
+    """
+    class Meta:
+        model = Address
+        fields = ('title',)
+
+
 class AddUserBrowsingHistorySerializer(serializers.Serializer):
-    """
-    添加用户浏览历史序列化器
-    """
     sku_id = serializers.IntegerField(label="商品SKU编号", min_value=1)
 
     def validate_sku_id(self, value):
@@ -138,27 +185,34 @@ class AddUserBrowsingHistorySerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
-        """
-        保存
-        """
-        user_id = self.context['request'].user.id
+        # sku_id
         sku_id = validated_data['sku_id']
 
-        redis_conn = get_redis_connection("history")
+        # user_id
+        user = self.context['request'].user
+
+        # redis  [6, 1,2,3,4,5]
+        redis_conn = get_redis_connection('history')
         pl = redis_conn.pipeline()
 
-        # 移除已经存在的本商品浏览记录
-        pl.lrem("history_%s" % user_id, 0, sku_id)
-        # 添加新的浏览记录
-        pl.lpush("history_%s" % user_id, sku_id)
-        # 只保存最多5条记录
-        pl.ltrim("history_%s" % user_id, 0, constants.USER_BROWSING_HISTORY_COUNTS_LIMIT-1)
+        redis_key = 'history_%s' % user.id
+        # 去重
+        pl.lrem(redis_key, 0, sku_id)
+
+        # 保存 增加
+        pl.lpush(redis_key, sku_id)
+
+        # 截断
+        pl.ltrim(redis_key, 0, constants.USER_BROWSE_HISTORY_MAX_LIMIT-1)
 
         pl.execute()
 
         return validated_data
 
+
 class SKUSerializer(serializers.ModelSerializer):
     class Meta:
         model = SKU
-        fields = ['id','name','price','default_image_url','comments']
+        fields = ('id', 'name', 'price', 'default_image_url', 'comments')
+
+
