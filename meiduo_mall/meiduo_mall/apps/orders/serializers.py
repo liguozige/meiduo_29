@@ -99,34 +99,47 @@ class SaveOrderSerializer(serializers.ModelSerializer):
                 )
                 # 查询商品数据库 获取商品数据（库存） [1,2,3]
                 sku_id_list = cart.keys()
-                sku_obj_list = SKU.objects.filter(id__in=sku_id_list)
+                # sku_obj_list = SKU.objects.filter(id__in=sku_id_list)
 
                 # 遍历需要结算的商品数量
-                for sku in sku_obj_list:
+                for sku_id in sku_id_list:
                     #用户需要购买的数量
-                    sku_count = cart[sku.id]
-                    #判断库存
-                    if sku.stock<sku_count:
-                        #回滚到保存点
-                        transaction.savepoint_rollback(save_id)
-                        raise serializers.ValidationError('商品%s库存不足'%sku.name)
+                    while True:
+                        sku = SKU.objects.get(id=sku_id)
+                        sku_count = cart[sku.id]
+                        origion_stock = sku.stock
+                        origion_sales = sku.sales
+                        #判断库存
+                        if origion_stock<sku_count:
+                            #回滚到保存点
+                            transaction.savepoint_rollback(save_id)
+                            raise serializers.ValidationError('商品%s库存不足'%sku.name)
 
-                    # 库存减少 销量增加
-                    sku.stock -= sku_count
-                    sku.sales += sku_count
-                    sku.save()
+                        # 库存减少 销量增加
+                        # sku.stock -= sku_count
+                        # sku.sales += sku_count
+                        # sku.save()
+                        new_stock = origion_stock-sku_count
+                        new_sales = origion_sales+sku_count
+                        result = SKU.objects.filter(id=sku.id,stock = origion_stock).update(stock = new_stock,sales = new_sales)
+                        if result==0:
+                            #商品被别人抢走,结束本次循环
+                            continue
 
-                    order.total_count += sku_count
-                    order.total_amount += (sku.price*sku_count)
+                        order.total_count += sku_count
+                        order.total_amount += (sku.price*sku_count)
 
-                    #创建订单商品信息表记录 OrderGoods
-                    OrderGoods.objects.create(
-                        order = order,
-                        sku = sku,
-                        count = sku_count,
-                        price = sku.price,
+                        #创建订单商品信息表记录 OrderGoods
+                        OrderGoods.objects.create(
+                            order = order,
+                            sku = sku,
+                            count = sku_count,
+                            price = sku.price,
 
-                    )
+                        )
+                        #抢到商品，跳出while True循环
+                        break
+
                 order.save()
             except serializers.ValidationError:
                 raise
@@ -140,7 +153,7 @@ class SaveOrderSerializer(serializers.ModelSerializer):
 
 
         # 删除购物车中已结算的商品
-        pl = redis_conn.pipline()
+        pl = redis_conn.pipeline()
         #hash
         pl.hdel('cart_%s'%user.id,*redis_cart_selected)
         #set

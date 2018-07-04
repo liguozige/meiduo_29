@@ -15,7 +15,7 @@ def merge_cart_cookie_to_redis(request, user, response):
     if cookie_cart is not None:
         cookie_cart = pickle.loads(base64.b64decode(cookie_cart.encode()))
         redis_conn = get_redis_connection('cart')
-        redis_cart = redis_conn.hgetall('cart_%s' % usert.id)
+        redis_cart = redis_conn.hgetall('cart_%s' % user.id)
         redis_cart_selected = redis_conn.smembers('cart_selected_%s' % user.id)
         cart = {}
         for sku_id, count in redis_cart.items():
